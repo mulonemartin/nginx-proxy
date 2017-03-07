@@ -1,4 +1,4 @@
-![nginx 1.9.15](https://img.shields.io/badge/nginx-1.9.15-brightgreen.svg) ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg) [![Build Status](https://travis-ci.org/jwilder/nginx-proxy.svg?branch=master)](https://travis-ci.org/jwilder/nginx-proxy) [![](https://img.shields.io/docker/stars/jwilder/nginx-proxy.svg)](https://hub.docker.com/r/jwilder/nginx-proxy 'DockerHub') [![](https://img.shields.io/docker/pulls/jwilder/nginx-proxy.svg)](https://hub.docker.com/r/jwilder/nginx-proxy 'DockerHub')
+![nginx 1.11.10](https://img.shields.io/badge/nginx-1.11.10-brightgreen.svg) ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg) [![Build Status](https://travis-ci.org/jwilder/nginx-proxy.svg?branch=master)](https://travis-ci.org/jwilder/nginx-proxy) [![](https://img.shields.io/docker/stars/jwilder/nginx-proxy.svg)](https://hub.docker.com/r/jwilder/nginx-proxy 'DockerHub') [![](https://img.shields.io/docker/pulls/jwilder/nginx-proxy.svg)](https://hub.docker.com/r/jwilder/nginx-proxy 'DockerHub')
 
 
 nginx-proxy sets up a container running nginx and [docker-gen][1].  docker-gen generates reverse proxy configs for nginx and reloads nginx when containers are started and stopped.
@@ -15,9 +15,25 @@ Then start any containers you want proxied with an env var `VIRTUAL_HOST=subdoma
 
     $ docker run -e VIRTUAL_HOST=foo.bar.com  ...
 
-The containers being proxied must [expose](https://docs.docker.com/reference/run/#expose-incoming-ports) the port to be proxied, either by using the `EXPOSE` directive in their `Dockerfile` or by using the `--expose` flag to `docker run` or `docker create`.
+The containers being proxied must [expose](https://docs.docker.com/engine/reference/run/#expose-incoming-ports) the port to be proxied, either by using the `EXPOSE` directive in their `Dockerfile` or by using the `--expose` flag to `docker run` or `docker create`.
 
 Provided your DNS is setup to forward foo.bar.com to the a host running nginx-proxy, the request will be routed to a container with the VIRTUAL_HOST env var set.
+
+### Image variants
+
+The nginx-proxy images are available in two flavors.
+
+#### jwilder/nginx-proxy:latest
+
+This image uses the debian:jessie based nginx image.
+
+    $ docker pull jwilder/nginx-proxy:latest
+
+#### jwilder/nginx-proxy:alpine
+
+This image is based on the nginx:alpine image.
+
+    $ docker pull jwilder/nginx-proxy:alpine
 
 ### Docker Compose
 
@@ -42,8 +58,14 @@ services:
 ```shell
 $ docker-compose up
 $ curl -H "Host: whoami.local" localhost
-I''m 5b129ab83266
+I'm 5b129ab83266
 ```
+
+### IPv6 support
+
+You can activate the IPv6 support for the nginx-proxy container by passing the value `true` to the `ENABLE_IPV6` environment variable:
+
+    $ docker run -d -p 80:80 -e ENABLE_IPV6=true -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
 
 ### Multiple Ports
 
@@ -76,7 +98,13 @@ In this example, the `my-nginx-proxy` container will be connected to `my-network
 
 ### SSL Backends
 
-If you would like to connect to your backend using HTTPS instead of HTTP, set `VIRTUAL_PROTO=https` on the backend container.
+If you would like the reverse proxy to connect to your backend using HTTPS instead of HTTP, set `VIRTUAL_PROTO=https` on the backend container.
+
+### uWSGI Backends
+
+If you would like to connect to uWSGI backend, set `VIRTUAL_PROTO=uwsgi` on the
+backend container. Your backend container should than listen on a port rather
+than a socket and expose that port.
 
 ### Default Host
 
@@ -91,6 +119,14 @@ nginx-proxy can also be run as two separate containers using the [jwilder/docker
 image and the official [nginx](https://registry.hub.docker.com/_/nginx/) image.
 
 You may want to do this to prevent having the docker socket bound to a publicly exposed container service.
+
+You can demo this pattern with docker-compose:
+
+```console
+$ docker-compose --file docker-compose-separate-containers.yml up
+$ curl -H "Host: whoami.local" localhost
+I'm 5b129ab83266
+```
 
 To run nginx proxy as a separate container you'll need to have [nginx.tmpl](https://github.com/jwilder/nginx-proxy/blob/master/nginx.tmpl) on your host system.
 
@@ -111,6 +147,9 @@ $ docker run --volumes-from nginx \
 Finally, start your containers with `VIRTUAL_HOST` environment variables.
 
     $ docker run -e VIRTUAL_HOST=foo.bar.com  ...
+### SSL Support using letsencrypt
+
+[letsencrypt-nginx-proxy-companion](https://github.com/JrCs/docker-letsencrypt-nginx-proxy-companion) is a lightweight companion container for the nginx-proxy. It allow the creation/renewal of Let's Encrypt certificates automatically. 
 
 ### SSL Support
 
@@ -125,6 +164,10 @@ The contents of `/path/to/certs` should contain the certificates and private key
 hosts in use.  The certificate and keys should be named after the virtual host with a `.crt` and
 `.key` extension.  For example, a container with `VIRTUAL_HOST=foo.bar.com` should have a
 `foo.bar.com.crt` and `foo.bar.com.key` file in the certs directory.
+
+If you are running the container in a virtualized environment (Hyper-V, VirtualBox, etc...),
+/path/to/certs must exist in that environment or be made accessible to that environment.
+By default, Docker is not able to mount directories on the host machine to containers running in a virtual machine.
 
 #### Diffie-Hellman Groups
 
@@ -164,12 +207,13 @@ a 503.
 
 To serve traffic in both SSL and non-SSL modes without redirecting to SSL, you can include the
 environment variable `HTTPS_METHOD=noredirect` (the default is `HTTPS_METHOD=redirect`).  You can also
-disable the non-SSL site entirely with `HTTPS_METHOD=nohttp`. `HTTPS_METHOD` must be specified
-on each container for which you want to override the default behavior.  If `HTTPS_METHOD=noredirect` is
-used, Strict Transport Security (HSTS) is disabled to prevent HTTPS users from being redirected by the
-client.  If you cannot get to the HTTP site after changing this setting, your browser has probably cached
-the HSTS policy and is automatically redirecting you back to HTTPS.  You will need to clear your browser's
-HSTS cache or use an incognito window / different browser.
+disable the non-SSL site entirely with `HTTPS_METHOD=nohttp`, or disable the HTTPS site with 
+`HTTPS_METHOD=nohttps`. `HTTPS_METHOD` must be specified on each container for which you want to 
+override the default behavior.  If `HTTPS_METHOD=noredirect` is used, Strict Transport Security (HSTS) 
+is disabled to prevent HTTPS users from being redirected by the client.  If you cannot get to the HTTP 
+site after changing this setting, your browser has probably cached the HSTS policy and is automatically 
+redirecting you back to HTTPS.  You will need to clear your browser's HSTS cache or use an incognito 
+window / different browser.
 
 ### Basic Authentication Support
 
@@ -205,9 +249,16 @@ proxy_set_header Connection $proxy_connection;
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 proxy_set_header X-Forwarded-Proto $proxy_x_forwarded_proto;
+proxy_set_header X-Forwarded-Ssl $proxy_x_forwarded_ssl;
+proxy_set_header X-Forwarded-Port $proxy_x_forwarded_port;
+
+# Mitigate httpoxy attack (see README for details)
+proxy_set_header Proxy "";
 ```
 
 ***NOTE***: If you provide this file it will replace the defaults; you may want to check the .tmpl file to make sure you have all of the needed options.
+
+***NOTE***: The default configuration blocks the `Proxy` HTTP request header from being sent to downstream servers.  This prevents attackers from using the so-called [httpoxy attack](http://httpoxy.org).  There is no legitimate reason for a client to send this header, and there are many vulnerable languages / platforms (`CVE-2016-5385`, `CVE-2016-5386`, `CVE-2016-5387`, `CVE-2016-5388`, `CVE-2016-1000109`, `CVE-2016-1000110`, `CERT-VU#797896`).
 
 #### Proxy-wide
 
@@ -266,7 +317,7 @@ If you are using multiple hostnames for a single container (e.g. `VIRTUAL_HOST=e
 #### Per-VIRTUAL_HOST location default configuration
 
 If you want most of your virtual hosts to use a default single `location` block configuration and then override on a few specific ones, add those settings to the `/etc/nginx/vhost.d/default_location` file. This file
-will be used on any virtual host which does not have a `/etc/nginx/vhost.d/{VIRTUAL_HOST}` file associated with it.
+will be used on any virtual host which does not have a `/etc/nginx/vhost.d/{VIRTUAL_HOST}_location` file associated with it.
 
 ### Contributing
 
@@ -274,6 +325,22 @@ Before submitting pull requests or issues, please check github to make sure an e
 
 #### Running Tests Locally
 
-To run tests, you'll need to install [bats 0.4.0](https://github.com/sstephenson/bats).
+To run tests, you need to prepare the docker image to test which must be tagged `jwilder/nginx-proxy:test`:
+
+    docker build -t jwilder/nginx-proxy:test .  # build the Debian variant image
+    
+and call the [test/pytest.sh](test/pytest.sh) script.
+
+Then build the Alpine variant of the image:
+
+    docker build -f Dockerfile.alpine -t jwilder/nginx-proxy:test .  # build the Alpline variant image
+
+and call the [test/pytest.sh](test/pytest.sh) script again.
+
+
+If your system has the `make` command, you can automate those tasks by calling:
 
     make test
+    
+
+You can learn more about how the test suite works and how to write new tests in the [test/README.md](test/README.md) file.
